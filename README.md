@@ -87,3 +87,88 @@ It is not just a tool — it's an intelligent ecosystem that allows teams to con
    ```bash
    git clone https://github.com/pravallika4218/smartsdlc.git
    cd smartsdlc
+Create and activate a virtual environment
+
+bash
+Copy
+Edit
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
+Install dependencies
+
+bash
+Copy
+Edit
+pip install -r requirements.txt
+Create a .env file in the root directory with:
+
+env
+Copy
+Edit
+WATSONX_API_KEY=your_ibm_watsonx_api_key
+WATSONX_PROJECT_ID=your_project_id
+WATSONX_MODEL_ID=granite-20b-code-instruct
+Running the Application
+Start the FastAPI backend
+
+bash
+Copy
+Edit
+uvicorn app.main:app --reload
+API docs available at: http://127.0.0.1:8000/docs
+
+Start the Streamlit frontend
+
+bash
+Copy
+Edit
+streamlit run frontend/Home.py
+Open in browser: http://localhost:8501
+
+Project Structure
+bash
+Copy
+Edit
+smartsdlc/
+├── app/                  # FastAPI backend modules
+│   ├── ai_story_generator.py
+│   ├── code_generator.py
+│   ├── bug_resolver.py
+│   ├── doc_generator.py
+│   ├── conversation_handler.py
+│   ├── chat_routes.py
+│   ├── feedback_routes.py
+│   ├── feedback_model.py
+│   ├── github_service.py
+│   └── main.py           # FastAPI app entrypoint
+├── frontend/             # Streamlit UI files
+│   ├── Home.py
+│   ├── Upload_and_Classify.py
+│   ├── Code_Generator.py
+│   ├── Test_Generator.py
+│   ├── Bug_Fixer.py
+│   ├── Code_Summarizer.py
+│   ├── Feedback.py
+│   └── api_client.py
+├── requirements.txt      # Backend dependencies
+├── .env.example          # Sample environment variables file
+├── README.md
+└── LICENSE               # MIT License
+Technologies Used
+Python 3.9+
+
+FastAPI (Backend API)
+
+Streamlit (Frontend UI)
+
+IBM Watsonx Granite-20B AI models
+
+PyMuPDF (PDF text extraction)
+
+LangChain (Conversational AI)
+
+Uvicorn (ASGI server)
+
+License
+This project is licensed under the MIT License - see the LICENSE file for details.
