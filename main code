@@ -1,0 +1,134 @@
+import os
+import base64
+import asyncio
+import uvicorn
+import requests
+import gradio as gr
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+# Install dotenv if you haven’t already (remove ! if running outside notebook)
+# !pip install python-dotenv
+from dotenv import load_dotenv
+from threading import Thread
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Correct usage: use environment variable NAMES here
+WATSONX_API_KEY = os.getenv("WATSONX_API_KEY")
+WATSONX_PROJECT_ID = os.getenv("WATSONX_PROJECT_ID")
+WATSONX_MODEL_ID = os.getenv("WATSONX_MODEL_ID")
+
+if not (WATSONX_API_KEY and WATSONX_PROJECT_ID and WATSONX_MODEL_ID):
+    raise Exception("Missing environment variables! Check your .env file.")
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {WATSONX_API_KEY}",
+}
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
+
+@app.get("/")
+async def root():
+    return {"message": "SmartSDLC running"}
+
+@app.post("/ai/generate")
+async def generate(req: Request):
+    data = await req.json()
+    prompt = data.get("prompt", "")
+    payload = {
+        "model_id": WATSONX_MODEL_ID,
+        "input": prompt,
+        "project_id": WATSONX_PROJECT_ID,
+    }
+    res = requests.post("https://us-south.ml.cloud.ibm.com/ml/v1/text/generate", headers=HEADERS, json=payload)
+    print("Response status:", res.status_code)
+    print("Response text:", res.text)
+    if res.status_code != 200:
+        return JSONResponse(status_code=res.status_code, content={"error": res.text})
+    result = res.json().get("results", [{}])[0].get("generated_text", "")
+    return {"result": result or "No response."}
+
+
+BACKEND_URL = "http://localhost:8000"
+
+def ai_prompt_task(prompt):
+    try:
+        res = requests.post(f"{BACKEND_URL}/ai/generate", json={"prompt": prompt})
+        if res.ok:
+            return res.json().get("result", "")
+        else:
+            return f"Error: {res.text}"
+    except Exception as e:
+        return str(e)
+
+def upload_and_classify(pdf_file):
+    if pdf_file is None:
+        return "Please upload a PDF."
+    with open(pdf_file.name, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("utf-8")
+    prompt = f"Classify the following PDF content into SDLC phases:\n{b64}"
+    return ai_prompt_task(prompt)
+
+def generate_code(prompt): return ai_prompt_task(f"Generate code for: {prompt}")
+def fix_code(code): return ai_prompt_task(f"Fix this code:\n{code}")
+def generate_tests(code): return ai_prompt_task(f"Write test cases for:\n{code}")
+def summarize_code(code): return ai_prompt_task(f"Summarize the following code:\n{code}")
+def chat_with_ai(query): return ai_prompt_task(f"Answer this SDLC question:\n{query}")
+def submit_feedback(text): return "Thanks for your feedback!"
+
+# Gradio UI
+with gr.Blocks() as demo:
+    gr.Markdown("## 🧠 SmartSDLC – AI-Powered SDLC Platform")
+
+    with gr.Tab("1️⃣ Upload & Classify"):
+        file = gr.File(label="Upload PDF")
+        out = gr.Textbox(label="Classification Result")
+        btn = gr.Button("Classify")
+        btn.click(upload_and_classify, inputs=file, outputs=out)
+
+    with gr.Tab("2️⃣ Code Generator"):
+        input_box = gr.Textbox(label="Enter Prompt")
+        output_box = gr.Code(label="Generated Code")
+        gr.Button("Generate").click(generate_code, inputs=input_box, outputs=output_box)
+
+    with gr.Tab("3️⃣ Bug Fixer"):
+        buggy = gr.Code(label="Buggy Code")
+        fixed = gr.Code(label="Fixed Code")
+        gr.Button("Fix Code").click(fix_code, inputs=buggy, outputs=fixed)
+
+    with gr.Tab("4️⃣ Test Generator"):
+        test_input = gr.Code(label="Code to Test")
+        test_output = gr.Code(label="Generated Tests")
+        gr.Button("Generate Tests").click(generate_tests, inputs=test_input, outputs=test_output)
+
+    with gr.Tab("5️⃣ Code Summarizer"):
+        summary_input = gr.Code(label="Code to Summarize")
+        summary_output = gr.Textbox(label="Summary")
+        gr.Button("Summarize").click(summarize_code, inputs=summary_input, outputs=summary_output)
+
+    with gr.Tab("6️⃣ AI Assistant"):
+        q = gr.Textbox(label="Ask a Question")
+        a = gr.Textbox(label="Answer")
+        gr.Button("Ask").click(chat_with_ai, inputs=q, outputs=a)
+
+    with gr.Tab("7️⃣ Feedback"):
+        fb = gr.Textbox(label="Your Feedback")
+        fb_out = gr.Textbox(label="Response")
+        gr.Button("Submit").click(submit_feedback, inputs=fb, outputs=fb_out)
+
+def run_backend():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000)
+    server = uvicorn.Server(config)
+    loop.run_until_complete(server.serve())
+
+if __name__ == "__main__":
+    Thread(target=run_backend, daemon=True).start()
+    demo.launch()
