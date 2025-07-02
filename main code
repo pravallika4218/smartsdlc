@@ -1,134 +1,291 @@
-import os
+import gradio as gr
+import requests
 import base64
 import asyncio
 import uvicorn
-import requests
-import gradio as gr
+from threading import Thread
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-# Install dotenv if you haven’t already (remove ! if running outside notebook)
-# !pip install python-dotenv
-from dotenv import load_dotenv
-from threading import Thread
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Correct usage: use environment variable NAMES here
-WATSONX_API_KEY = os.getenv("WATSONX_API_KEY")
-WATSONX_PROJECT_ID = os.getenv("WATSONX_PROJECT_ID")
-WATSONX_MODEL_ID = os.getenv("WATSONX_MODEL_ID")
-
-if not (WATSONX_API_KEY and WATSONX_PROJECT_ID and WATSONX_MODEL_ID):
-    raise Exception("Missing environment variables! Check your .env file.")
-
-HEADERS = {
-    "Content-Type": "application/json",
-    "Authorization": f"Bearer {WATSONX_API_KEY}",
-}
-
+# ====== FastAPI backend ======
 app = FastAPI()
+
+# Allow CORS so Gradio frontend can call backend from localhost
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
 async def root():
-    return {"message": "SmartSDLC running"}
+    return {"message": "Hello World"}
 
-@app.post("/ai/generate")
-async def generate(req: Request):
+# Example route: /ai/upload-pdf
+@app.post("/ai/upload-pdf")
+async def upload_pdf(req: Request):
     data = await req.json()
-    prompt = data.get("prompt", "")
-    payload = {
-        "model_id": WATSONX_MODEL_ID,
-        "input": prompt,
-        "project_id": WATSONX_PROJECT_ID,
+    file_base64 = data.get("file_base64")
+    if not file_base64:
+        return JSONResponse({"error": "No file provided"}, status_code=400)
+    # TODO: Process your PDF base64, do classification logic here
+    classified = {
+        "Phase 1": ["Requirement A", "Requirement B"],
+        "Phase 2": ["Requirement C"]
     }
-    res = requests.post("https://us-south.ml.cloud.ibm.com/ml/v1/text/generate", headers=HEADERS, json=payload)
-    print("Response status:", res.status_code)
-    print("Response text:", res.text)
-    if res.status_code != 200:
-        return JSONResponse(status_code=res.status_code, content={"error": res.text})
-    result = res.json().get("results", [{}])[0].get("generated_text", "")
-    return {"result": result or "No response."}
+    return {"classified": classified}
 
+@app.post("/ai/generate-code")
+async def generate_code_endpoint(req: Request):
+    data = await req.json()
+    prompt = data.get("prompt")
+    if not prompt:
+        return JSONResponse({"error": "No prompt provided"}, status_code=400)
+    # TODO: Generate code from prompt
+    generated_code = f"# Code generated for prompt: {prompt}\nprint('Hello World')"
+    return {"code": generated_code}
 
-BACKEND_URL = "http://localhost:8000"
+@app.post("/ai/fix-code")
+async def fix_code_endpoint(req: Request):
+    data = await req.json()
+    code = data.get("code")
+    if not code:
+        return JSONResponse({"error": "No code provided"}, status_code=400)
+    # TODO: Fix the buggy code and provide explanation
+    fixed_code = code.replace("bug", "fix")
+    explanation = "Replaced 'bug' with 'fix'"
+    return {"fixed_code": fixed_code, "explanation": explanation}
 
-def ai_prompt_task(prompt):
-    try:
-        res = requests.post(f"{BACKEND_URL}/ai/generate", json={"prompt": prompt})
-        if res.ok:
-            return res.json().get("result", "")
-        else:
-            return f"Error: {res.text}"
-    except Exception as e:
-        return str(e)
+@app.post("/ai/generate-tests")
+async def generate_tests_endpoint(req: Request):
+    data = await req.json()
+    code = data.get("code")
+    if not code:
+        return JSONResponse({"error": "No code provided"}, status_code=400)
+    # TODO: Generate test cases for given code
+    tests = "def test_example():\n    assert True"
+    return {"tests": tests}
 
-def upload_and_classify(pdf_file):
-    if pdf_file is None:
-        return "Please upload a PDF."
-    with open(pdf_file.name, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("utf-8")
-    prompt = f"Classify the following PDF content into SDLC phases:\n{b64}"
-    return ai_prompt_task(prompt)
+@app.post("/ai/summarize")
+async def summarize_endpoint(req: Request):
+    data = await req.json()
+    code = data.get("code")
+    if not code:
+        return JSONResponse({"error": "No code provided"}, status_code=400)
+    # TODO: Summarize code logic here
+    summary = "This function prints Hello World."
+    return {"summary": summary}
 
-def generate_code(prompt): return ai_prompt_task(f"Generate code for: {prompt}")
-def fix_code(code): return ai_prompt_task(f"Fix this code:\n{code}")
-def generate_tests(code): return ai_prompt_task(f"Write test cases for:\n{code}")
-def summarize_code(code): return ai_prompt_task(f"Summarize the following code:\n{code}")
-def chat_with_ai(query): return ai_prompt_task(f"Answer this SDLC question:\n{query}")
-def submit_feedback(text): return "Thanks for your feedback!"
+@app.post("/feedback")
+async def feedback_endpoint(req: Request):
+    data = await req.json()
+    text = data.get("text")
+    if not text:
+        return JSONResponse({"error": "No feedback text provided"}, status_code=400)
+    # TODO: Store feedback somewhere
+    return {"message": "Thanks for your feedback!"}
 
-# Gradio UI
-with gr.Blocks() as demo:
-    gr.Markdown("## 🧠 SmartSDLC – AI-Powered SDLC Platform")
+@app.post("/github/push")
+async def github_push_endpoint(req: Request):
+    data = await req.json()
+    repo_url = data.get("repo_url")
+    filename = data.get("filename")
+    code = data.get("code")
+    if not (repo_url and filename and code):
+        return JSONResponse({"error": "Missing fields"}, status_code=400)
+    # TODO: Push code to GitHub repo logic here
+    return {"message": f"Code pushed to {repo_url} as {filename}"}
 
-    with gr.Tab("1️⃣ Upload & Classify"):
-        file = gr.File(label="Upload PDF")
-        out = gr.Textbox(label="Classification Result")
-        btn = gr.Button("Classify")
-        btn.click(upload_and_classify, inputs=file, outputs=out)
+@app.post("/chat/chat")
+async def chat_endpoint(req: Request):
+    data = await req.json()
+    query = data.get("query")
+    if not query:
+        return JSONResponse({"error": "No query provided"}, status_code=400)
+    # TODO: Generate AI chat response here
+    response = f"Echo: {query}"
+    return {"response": response}
 
-    with gr.Tab("2️⃣ Code Generator"):
-        input_box = gr.Textbox(label="Enter Prompt")
-        output_box = gr.Code(label="Generated Code")
-        gr.Button("Generate").click(generate_code, inputs=input_box, outputs=output_box)
-
-    with gr.Tab("3️⃣ Bug Fixer"):
-        buggy = gr.Code(label="Buggy Code")
-        fixed = gr.Code(label="Fixed Code")
-        gr.Button("Fix Code").click(fix_code, inputs=buggy, outputs=fixed)
-
-    with gr.Tab("4️⃣ Test Generator"):
-        test_input = gr.Code(label="Code to Test")
-        test_output = gr.Code(label="Generated Tests")
-        gr.Button("Generate Tests").click(generate_tests, inputs=test_input, outputs=test_output)
-
-    with gr.Tab("5️⃣ Code Summarizer"):
-        summary_input = gr.Code(label="Code to Summarize")
-        summary_output = gr.Textbox(label="Summary")
-        gr.Button("Summarize").click(summarize_code, inputs=summary_input, outputs=summary_output)
-
-    with gr.Tab("6️⃣ AI Assistant"):
-        q = gr.Textbox(label="Ask a Question")
-        a = gr.Textbox(label="Answer")
-        gr.Button("Ask").click(chat_with_ai, inputs=q, outputs=a)
-
-    with gr.Tab("7️⃣ Feedback"):
-        fb = gr.Textbox(label="Your Feedback")
-        fb_out = gr.Textbox(label="Response")
-        gr.Button("Submit").click(submit_feedback, inputs=fb, outputs=fb_out)
-
-def run_backend():
+def run_uvicorn():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000)
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
     server = uvicorn.Server(config)
     loop.run_until_complete(server.serve())
 
+# ====== Gradio frontend ======
+BACKEND_URL = "http://localhost:8000"
+
+def upload_and_classify(pdf_file):
+    if pdf_file is None:
+        return "Please upload a PDF file."
+    try:
+        # pdf_file is a path string — open the file yourself
+        with open(pdf_file, "rb") as f:
+            content = base64.b64encode(f.read()).decode("utf-8")
+        response = requests.post(f"{BACKEND_URL}/ai/upload-pdf", json={"file_base64": content})
+        if response.ok:
+            classified = response.json().get("classified", {})
+            result = ""
+            for phase, sentences in classified.items():
+                result += f"### {phase}\n" + "\n".join(f"- {s}" for s in sentences) + "\n\n"
+            return result or "No classification results found."
+        else:
+            return f"Error in classification: {response.text}"
+    except Exception as e:
+        return f"Exception during classification: {str(e)}"
+
+
+def generate_code(prompt):
+    if not prompt:
+        return "Please enter a prompt."
+    try:
+        res = requests.post(f"{BACKEND_URL}/ai/generate-code", json={"prompt": prompt})
+        if res.ok:
+            return res.json().get("code", "No code returned.")
+        else:
+            return f"Error generating code: {res.text}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
+
+def fix_code(buggy_code):
+    if not buggy_code:
+        return "", "Please enter buggy code."
+    try:
+        res = requests.post(f"{BACKEND_URL}/ai/fix-code", json={"code": buggy_code})
+        if res.ok:
+            data = res.json()
+            return data.get("fixed_code", ""), data.get("explanation", "")
+        else:
+            return "", f"Error fixing code: {res.text}"
+    except Exception as e:
+        return "", f"Exception: {str(e)}"
+
+def generate_tests(code):
+    if not code:
+        return "Please provide code to generate tests."
+    try:
+        res = requests.post(f"{BACKEND_URL}/ai/generate-tests", json={"code": code})
+        if res.ok:
+            return res.json().get("tests", "")
+        else:
+            return f"Error generating tests: {res.text}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
+
+def summarize_code(code):
+    if not code:
+        return "Please provide code to summarize."
+    try:
+        res = requests.post(f"{BACKEND_URL}/ai/summarize", json={"code": code})
+        if res.ok:
+            return res.json().get("summary", "")
+        else:
+            return f"Error summarizing code: {res.text}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
+
+def submit_feedback(text):
+    if not text:
+        return "Please enter feedback."
+    try:
+        res = requests.post(f"{BACKEND_URL}/feedback", json={"text": text})
+        if res.ok:
+            return "Thanks for your feedback!"
+        else:
+            return f"Error submitting feedback: {res.text}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
+
+def push_to_github(repo, filename, code):
+    if not (repo and filename and code):
+        return "Please provide all fields."
+    try:
+        res = requests.post(f"{BACKEND_URL}/github/push", json={
+            "repo_url": repo,
+            "filename": filename,
+            "code": code
+        })
+        if res.ok:
+            return res.json().get("message", "Push complete.")
+        else:
+            return f"Error pushing to GitHub: {res.text}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
+
+def chat_with_ai(query):
+    if not query:
+        return "Please enter a question."
+    try:
+        res = requests.post(f"{BACKEND_URL}/chat/chat", json={"query": query})
+        if res.ok:
+            return res.json().get("response", "")
+        else:
+            return f"Error chatting with AI: {res.text}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
+
+# Build Gradio UI
+with gr.Blocks(title="SmartSDLC – AI for Software Development") as demo:
+    gr.Markdown("# 🧠 SmartSDLC\nAI-Powered Software Development Lifecycle")
+
+    with gr.Tab("1️⃣ Upload & Classify"):
+        pdf = gr.File(label="Upload PDF")
+        classify_btn = gr.Button("Classify Requirements")
+        output_classify = gr.Markdown()
+        classify_btn.click(upload_and_classify, inputs=pdf, outputs=output_classify)
+
+    with gr.Tab("2️⃣ Code Generator"):
+        prompt = gr.Textbox(label="Describe the task", placeholder="Enter a natural language description")
+        code_out = gr.Code(label="Generated Code", value="")
+        gen_btn = gr.Button("Generate")
+        gen_btn.click(generate_code, inputs=prompt, outputs=code_out)
+
+    with gr.Tab("3️⃣ Bug Fixer"):
+        buggy = gr.Code(label="Paste Buggy Code", value="")
+        fixed = gr.Code(label="Fixed Code", value="")
+        explanation = gr.Textbox(label="Fix Explanation", interactive=False)
+        fix_btn = gr.Button("Fix Code")
+        fix_btn.click(fix_code, inputs=buggy, outputs=[fixed, explanation])
+
+    with gr.Tab("4️⃣ Test Case Generator"):
+        test_code_input = gr.Code(label="Paste Code to Generate Tests", value="")
+        test_output = gr.Code(label="Generated Tests", value="")
+        test_btn = gr.Button("Generate Tests")
+        test_btn.click(generate_tests, inputs=test_code_input, outputs=test_output)
+
+    with gr.Tab("5️⃣ Code Summarizer"):
+        summarize_input = gr.Code(label="Paste Code to Summarize", value="")
+        summary_output = gr.Textbox(label="Code Summary", value="", interactive=False)
+        sum_btn = gr.Button("Summarize")
+        sum_btn.click(summarize_code, inputs=summarize_input, outputs=summary_output)
+
+    with gr.Tab("6️⃣ Feedback Collector"):
+        feedback_input = gr.Textbox(label="Share Your Experience", placeholder="Your feedback here...")
+        feedback_output = gr.Textbox(label="Feedback Status", interactive=False)
+        feedback_btn = gr.Button("Submit Feedback")
+        feedback_btn.click(submit_feedback, inputs=feedback_input, outputs=feedback_output)
+
+    with gr.Tab("7️⃣ GitHub Push"):
+        repo_input = gr.Textbox(label="GitHub Repository URL", placeholder="https://github.com/username/repo.git")
+        filename_input = gr.Textbox(label="Filename", placeholder="example.py")
+        code_push_input = gr.Code(label="Code to Push", value="")
+        github_output = gr.Textbox(label="Push Status", interactive=False)
+        push_btn = gr.Button("Push to GitHub")
+        push_btn.click(push_to_github, inputs=[repo_input, filename_input, code_push_input], outputs=github_output)
+
+    with gr.Tab("8️⃣ AI Assistant"):
+        chat_input = gr.Textbox(label="Ask a Question", placeholder="How do I write a unit test?")
+        chat_output = gr.Textbox(label="AI Response", interactive=False)
+        ask_btn = gr.Button("Ask")
+        ask_btn.click(chat_with_ai, inputs=chat_input, outputs=chat_output)
+
 if __name__ == "__main__":
-    Thread(target=run_backend, daemon=True).start()
+    # Start backend server in a background thread
+    backend_thread = Thread(target=run_uvicorn, daemon=True)
+    backend_thread.start()
+
+    # Start Gradio frontend (blocking)
     demo.launch()
